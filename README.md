@@ -16,7 +16,7 @@ export OPENSSL_INCLUDE_DIR="${OPENSSL_ROOT_DIR}/include"
 export OPENSSL_LIBRARIES="${OPENSSL_ROOT_DIR}/lib"
 ```
 
-The environment variables above are for MacOS. For Linux, replace ```$(brew --prefix openssl)``` in OPENSSL_ROOT_DIR with the path to the OpenSSL installation directory (e.g., ```/usr/local/ssl```).
+For Linux, replace ```$(brew --prefix openssl)``` in OPENSSL_ROOT_DIR with the path to the OpenSSL installation directory (e.g., ```/usr/local/ssl```).
 
 
 To build the library, run the following commands.
