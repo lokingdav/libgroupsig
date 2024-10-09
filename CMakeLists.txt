@@ -24,6 +24,9 @@ include_directories("${CMAKE_SOURCE_DIR}/src/include")
 include_directories("${CMAKE_BINARY_DIR}/external/include")
 link_directories("${CMAKE_BINARY_DIR}/external/lib")
 
+include_directories("$ENV{OPENSSL_INCLUDE_DIR}")
+link_directories("$ENV{OPENSSL_LIBRARIES}")
+
 # Check dependencies
 
 ## OpenSSL
@@ -81,3 +84,5 @@ add_subdirectory (${CMAKE_SOURCE_DIR}/src/math)
 add_subdirectory (${CMAKE_SOURCE_DIR}/src/misc)
 add_subdirectory (${CMAKE_SOURCE_DIR}/src/groupsig)
 add_subdirectory (${PROJECT_SOURCE_DIR}/src/tools)
+
+message(STATUS "Using OpenSSL version: ${OPENSSL_VERSION}")
