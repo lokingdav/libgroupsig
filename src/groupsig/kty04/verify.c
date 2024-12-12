@@ -1,4 +1,4 @@
-/* 
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,27 +18,34 @@
  */
 
 #include <stdlib.h>
-#include <openssl/sha.h> /** @todo This should not be! */
+// #include <openssl/sha.h> /** @todo This should not be! */
+#include <openssl/evp.h>
 
 #include "kty04.h"
 #include "groupsig/kty04/grp_key.h"
 #include "groupsig/kty04/signature.h"
 #include "bigz.h"
 
+#ifdef SHA3
+#define HASH_DIGEST_LENGTH 64
+#else
+#define HASH_DIGEST_LENGTH 32
+#endif
+
 /* Private functions */
 
-/** 
- * @fn static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signature_t *sig, 
+/**
+ * @fn static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signature_t *sig,
  *			                    uint8_t *fail)
  * @brief Checks the interval of the sw elements of a KTY04 signature.
- * 
+ *
  * @param[in] grpkey The group key.
  * @param[in] sig The signature.
  * @param[in,out] fail Will be set to 0 if the sw's are ok, to 1 otherwise.
- * 
+ *
  * @return IOK or IERROR
  */
-static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signature_t *sig, 
+static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signature_t *sig,
 					 uint8_t *fail) {
 
   bigz_t lambda_min, lambda_max, m_min, m_max, gamma_min, gamma_max, prod_min, prod_max;
@@ -47,7 +54,7 @@ static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signatur
   int rc;
 
   if(!grpkey || !sig || !fail) {
-    fprintf(stderr, "Error in _kty04_signature_check_sw_intervals (%d): %s\n", __LINE__, 
+    fprintf(stderr, "Error in _kty04_signature_check_sw_intervals (%d): %s\n", __LINE__,
 	    strerror(EINVAL));
     errno = EINVAL;
     return IERROR;
@@ -62,21 +69,21 @@ static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signatur
 
   /* The exponent of sw[4] is obtained from the product of the spheres gamma and M */
   if(!(sp_prod = sphere_init())) return IERROR;
-  if(sphere_get_product_spheres(grpkey->inner_gamma, grpkey->inner_M, 
-				sp_prod) == IERROR) {   
+  if(sphere_get_product_spheres(grpkey->inner_gamma, grpkey->inner_M,
+				sp_prod) == IERROR) {
     sphere_free(sp_prod);
     return IERROR;
   }
-  
+
   /** @todo Although in the KTY04 shcheme, all the spheres have centers and radius
       that are powers of 2, their product need not be an exact power of 2. Here, we
       round the log2 to the immediatly bigger integer (if > 0) or to the immediatly
       smaller (if < 0). Does this have some impact in the method? */
   errno = 0;
-  mu_prod = bigz_sizeinbase(sp_prod->radius, 2);
+  mu_prod = bigz_sizeinbits(sp_prod->radius);
   if(errno) { sphere_free(sp_prod); return IERROR; }
 
-  if(sphere_free(sp_prod) == IERROR) 
+  if(sphere_free(sp_prod) == IERROR)
     GOTOENDRC(IERROR, _signature_check_sw_intervals);
 
   exp_lambda = grpkey->epsilon*((grpkey->nu/4-1)+grpkey->k)+1;
@@ -84,21 +91,21 @@ static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signatur
   /* exp_gamma = exp_lambda; */
   exp_prod = grpkey->epsilon*(mu_prod+grpkey->k)+1;
 
-  if(!(lambda_max = bigz_init())) 
+  if(!(lambda_max = bigz_init()))
     GOTOENDRC(IERROR, _signature_check_sw_intervals);
-  if(bigz_ui_pow_ui(lambda_max, 2, exp_lambda) == IERROR) 
+  if(bigz_ui_pow_ui(lambda_max, 2, exp_lambda) == IERROR)
     GOTOENDRC(IERROR, _signature_check_sw_intervals);
-  if(bigz_sub_ui(lambda_max, lambda_max, 1) == IERROR) 
+  if(bigz_sub_ui(lambda_max, lambda_max, 1) == IERROR)
     GOTOENDRC(IERROR, _signature_check_sw_intervals);
-  if(!(lambda_min = bigz_init())) 
+  if(!(lambda_min = bigz_init()))
     GOTOENDRC(IERROR, _signature_check_sw_intervals);
-  if(bigz_neg(lambda_min, lambda_max) == IERROR) 
+  if(bigz_neg(lambda_min, lambda_max) == IERROR)
     GOTOENDRC(IERROR, _signature_check_sw_intervals);
 
   if(!(m_max = bigz_init()))
     GOTOENDRC(IERROR, _signature_check_sw_intervals);
   if(bigz_ui_pow_ui(m_max, 2, exp_m) == IERROR)
-    GOTOENDRC(IERROR, _signature_check_sw_intervals);    
+    GOTOENDRC(IERROR, _signature_check_sw_intervals);
   if(bigz_sub_ui(m_max, m_max, 1) == IERROR)
     GOTOENDRC(IERROR, _signature_check_sw_intervals);
   if(!(m_min = bigz_init()))
@@ -125,7 +132,7 @@ static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signatur
   /* sw1: tw1 - c*(x - inner_lambda->center), therefore, sw1 must belong to
      +-2^epsilon*(mu_lambda+k)+1 */
   errno = 0;
-  if(bigz_cmp(sig->sw[0], lambda_min) < 0 || 
+  if(bigz_cmp(sig->sw[0], lambda_min) < 0 ||
      bigz_cmp(sig->sw[0], lambda_max) > 0) {
     if(errno) GOTOENDRC(IERROR, _signature_check_sw_intervals);
     *fail = 1;
@@ -182,7 +189,7 @@ static int _signature_check_sw_intervals(kty04_grp_key_t *grpkey, kty04_signatur
   if(m_max) bigz_free(m_max);
   if(gamma_min) bigz_free(gamma_min);
   if(gamma_max) bigz_free(gamma_max);
-  if(prod_min) bigz_free(prod_min); 
+  if(prod_min) bigz_free(prod_min);
   if(prod_max) bigz_free(prod_max);
 
   if(rc == IOK) *fail = 0;
@@ -209,7 +216,7 @@ static int _signature_recover_Bs(kty04_grp_key_t *grpkey, kty04_signature_t *sig
   /* To recover the B's we only need the k LSbits of c */
   if(!(c = bigz_init_set(sig->c))) GOTOENDRC(IERROR, _signature_recover_Bs);
   errno = 0;
-  sc = bigz_sizeinbase(c, 2);
+  sc = bigz_sizeinbits(c);
   if(errno) GOTOENDRC(IERROR, _signature_recover_Bs);
   for(i=grpkey->k; i<sc; i++) {
     errno = 0;
@@ -219,8 +226,8 @@ static int _signature_recover_Bs(kty04_grp_key_t *grpkey, kty04_signature_t *sig
 
   /* We will also need the product of spheres inner_gamma and inner_M */
   if(!(sp_prod = sphere_init())) GOTOENDRC(IERROR, _signature_recover_Bs);
-  if(sphere_get_product_spheres(grpkey->inner_gamma, grpkey->inner_M, 
-				sp_prod) == IERROR) {   
+  if(sphere_get_product_spheres(grpkey->inner_gamma, grpkey->inner_M,
+				sp_prod) == IERROR) {
     sphere_free(sp_prod);
     return IERROR;
   }
@@ -269,7 +276,7 @@ static int _signature_recover_Bs(kty04_grp_key_t *grpkey, kty04_signature_t *sig
     GOTOENDRC(IERROR, _signature_recover_Bs);
   if(bigz_mod(B[1], aux, grpkey->n) == IERROR)
     GOTOENDRC(IERROR, _signature_recover_Bs);
-  
+
   /* B[2] = A[0]^sw[4]*A[2]^sw[2]*(A[0]^2l_4*A[2]^2l_2)^(-c) */
   if(bigz_powm(aux, sig->A[0], sp_prod->center, grpkey->n) == IERROR)
     GOTOENDRC(IERROR, _signature_recover_Bs);
@@ -369,9 +376,9 @@ static int _signature_recover_Bs(kty04_grp_key_t *grpkey, kty04_signature_t *sig
     GOTOENDRC(IERROR, _signature_recover_Bs);
 
   if(sphere_free(sp_prod)) rc = IERROR;
-     
+
  _signature_recover_Bs_end:
-     
+
   if(c) bigz_free(c);
   if(aux) bigz_free(aux);
   if(aux2) bigz_free(aux2);
@@ -381,18 +388,19 @@ static int _signature_recover_Bs(kty04_grp_key_t *grpkey, kty04_signature_t *sig
 }
 
 int kty04_verify(uint8_t *ok, groupsig_signature_t *sig, message_t *msg, groupsig_key_t *grpkey) {
-  
+
   kty04_grp_key_t *gkey;
   kty04_signature_t *kty04_sig;
-  byte_t sc[SHA_DIGEST_LENGTH+1];
-  SHA_CTX sha;
+  byte_t sc[HASH_DIGEST_LENGTH+1];
+  // SHA_CTX sha;
+	EVP_MD_CTX *mdctx;
   bigz_t c, *B;
   char *aux_sB, *aux_sA;
   uint32_t i;
   int rc;
   uint8_t fail;
 
-  if(!ok || !sig || !msg || 
+  if(!ok || !sig || !msg ||
      !grpkey || grpkey->scheme != GROUPSIG_KTY04_CODE) {
     LOG_EINVAL(&logger, __FILE__, "kty04_verify", __LINE__, LOGERROR);
     return IERROR;
@@ -419,7 +427,7 @@ int kty04_verify(uint8_t *ok, groupsig_signature_t *sig, message_t *msg, groupsi
 
   /* 2) Recover the B's */
   if(!(B = (bigz_t *) malloc(sizeof(bigz_t)*kty04_sig->z))) {
-    LOG_ERRORCODE(&logger, __FILE__, "kty04_verify", __LINE__, 
+    LOG_ERRORCODE(&logger, __FILE__, "kty04_verify", __LINE__,
 		  errno, LOGERROR);
     return IERROR;
   }
@@ -434,27 +442,36 @@ int kty04_verify(uint8_t *ok, groupsig_signature_t *sig, message_t *msg, groupsi
 
   /* Initialize the hashing environment */
   /** @todo Use EVP_* instead of SHA1_* */
-  if(!SHA1_Init(&sha)) {
+  if((mdctx = EVP_MD_CTX_new()) == NULL) {
     LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_verify", __LINE__, EDQUOT,
-		      "SHA1_Init", LOGERROR);
+		      "EVP_MD_CTX_new", LOGERROR);
+    GOTOENDRC(IERROR, kty04_verify);
+  }
+#ifdef SHA3
+  if(EVP_DigestInit_ex(mdctx, EVP_sha3_512(), NULL) != 1) {
+#else
+  if(EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL) != 1) {
+#endif
+    LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_verify", __LINE__, EDQUOT,
+		      "EVP_DigestInit_ex", LOGERROR);
     GOTOENDRC(IERROR, kty04_verify);
   }
 
   /* Put the message into the hash */
-  if(!SHA1_Update(&sha, msg->bytes, msg->length)) {
+  if(EVP_DigestUpdate(mdctx, msg->bytes, msg->length) != 1) {
     LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_verify", __LINE__, EDQUOT,
-		      "SHA1_Update", LOGERROR);
-    GOTOENDRC(IERROR, kty04_verify);    
+		      "EVP_DigestUpdate", LOGERROR);
+    GOTOENDRC(IERROR, kty04_verify);
   }
 
   for(i=0; i<kty04_sig->z; i++) {
 
     /* Put the i-th element of the array */
-    if(!(aux_sB = bigz_get_str(10, B[i]))) GOTOENDRC(IERROR, kty04_verify);
-    if(!SHA1_Update(&sha, aux_sB, strlen(aux_sB))) {
+    if(!(aux_sB = bigz_get_str10(B[i]))) GOTOENDRC(IERROR, kty04_verify);
+    if(EVP_DigestUpdate(mdctx, aux_sB, strlen(aux_sB)) != 1) {
       LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_verify", __LINE__, EDQUOT,
-			"SHA1_Update", LOGERROR);
-      GOTOENDRC(IERROR, kty04_verify);    
+			"EVP_DigestUpdate", LOGERROR);
+      GOTOENDRC(IERROR, kty04_verify);
     }
 
     free(aux_sB); aux_sB = NULL;
@@ -467,46 +484,47 @@ int kty04_verify(uint8_t *ok, groupsig_signature_t *sig, message_t *msg, groupsi
   for(i=0; i<kty04_sig->m; i++) {
 
     /* Put the i-th element of the array */
-    if(!(aux_sA = bigz_get_str(10, kty04_sig->A[i]))) GOTOENDRC(IERROR, kty04_verify);
-    if(!SHA1_Update(&sha, aux_sA, strlen(aux_sA))) {
+    if(!(aux_sA = bigz_get_str10(kty04_sig->A[i]))) GOTOENDRC(IERROR, kty04_verify);
+    if(EVP_DigestUpdate(mdctx, aux_sA, strlen(aux_sA)) != 1) {
       LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_verify", __LINE__, EDQUOT,
-			"SHA1_Update", LOGERROR);
-      GOTOENDRC(IERROR, kty04_verify);    
+			"EVP_DigestUpdate", LOGERROR);
+      GOTOENDRC(IERROR, kty04_verify);
     }
 
     free(aux_sA); aux_sA = NULL;
 
-  } 
+  }
 
   /* Calculate the hash */
-  memset(sc, 0, SHA_DIGEST_LENGTH+1);
-  if(!SHA1_Final(sc, &sha)) {
+  memset(sc, 0, HASH_DIGEST_LENGTH+1);
+  if(EVP_DigestFinal_ex(mdctx, sc, NULL) != 1) {
     LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_verify", __LINE__, EDQUOT,
-			"SHA1_Final", LOGERROR);
-      GOTOENDRC(IERROR, kty04_verify);    
+			"EVP_DigestFinal_ex", LOGERROR);
+      GOTOENDRC(IERROR, kty04_verify);
   }
 
   /* Now, we have to get c = h(message,B[1],...,B[z],A[1],...,A[m]) as an mpz */
-  if(!(c = bigz_import(sc, SHA_DIGEST_LENGTH))) GOTOENDRC(IERROR, kty04_verify);
+  if(!(c = bigz_import(sc, HASH_DIGEST_LENGTH))) GOTOENDRC(IERROR, kty04_verify);
 
   /* Check the hash */
   errno = 0;
   if(bigz_cmp(c, kty04_sig->c)) {
     if(errno) GOTOENDRC(IERROR, kty04_verify);
     fail = 1;
+    *ok = !fail;
+    if (mdctx) EVP_MD_CTX_free(mdctx);
     bigz_free(c);
     return IOK;
   } else {
     fail = 0;
+    *ok = !fail;
   }
 
   /* 2) Check that each relation of the relation set is satisfied */
   /* return _kty04_signature_check_relations(gkey, sig, fail); */
 
-  *ok = !fail;
-
  kty04_verify_end:
-  
+  if (mdctx) EVP_MD_CTX_free(mdctx);
   bigz_free(c);
   return rc;
 

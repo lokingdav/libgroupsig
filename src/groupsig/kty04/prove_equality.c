@@ -1,4 +1,4 @@
-/* 
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,7 +18,8 @@
  */
 
 #include <stdlib.h>
-#include <openssl/sha.h> /** @todo This should not be! */
+// #include <openssl/sha.h> /** @todo This should not be! */
+#include <openssl/evp.h>
 
 #include "kty04.h"
 #include "groupsig/kty04/sphere.h"
@@ -29,21 +30,28 @@
 #include "bigz.h"
 #include "sys/mem.h"
 
+#ifdef SHA3
+#define HASH_DIGEST_LENGTH 64
+#else
+#define HASH_DIGEST_LENGTH 32
+#endif
+
 /* Private functions */
 
 
 /* Public functions */
 
-int kty04_prove_equality(groupsig_proof_t *proof, groupsig_key_t *memkey, 
+int kty04_prove_equality(groupsig_proof_t *proof, groupsig_key_t *memkey,
 			 groupsig_key_t *grpkey, groupsig_signature_t **sigs, uint16_t n_sigs) {
-  
+
   kty04_grp_key_t *gkey;
   kty04_mem_key_t *mkey;
-  groupsig_signature_t *sig; 
+  groupsig_signature_t *sig;
   kty04_signature_t *kty04_sig;
   kty04_proof_t *kty04_proof;
-  byte_t aux_sc[SHA_DIGEST_LENGTH+1];
-  SHA_CTX aux_sha;
+  byte_t aux_sc[HASH_DIGEST_LENGTH+1];
+  // SHA_CTX aux_sha;
+	EVP_MD_CTX *mdctx;
   char *aux_t7r, *aux_t7, *aux_n;
   bigz_t r, t7r;
   int rc;
@@ -56,14 +64,14 @@ int kty04_prove_equality(groupsig_proof_t *proof, groupsig_key_t *memkey,
     LOG_EINVAL(&logger, __FILE__, "kty04_prove_equality", __LINE__, LOGERROR);
     return IERROR;
   }
-   
+
   r = NULL; t7r = NULL;
   rc = IOK;
-   
+
   gkey = (kty04_grp_key_t *) grpkey->key;
   mkey = (kty04_mem_key_t *) memkey->key;
   kty04_proof = (kty04_proof_t *) proof->proof;
-   
+
   if(!(r = bigz_init())) {
     LOG_ERRORCODE(&logger, __FILE__, "kty04_prove_equality", __LINE__, errno, LOGERROR);
     return IERROR;
@@ -71,16 +79,25 @@ int kty04_prove_equality(groupsig_proof_t *proof, groupsig_key_t *memkey,
 
   /* Initialize the hashing environment */
   /** @todo Use EVP_* instead of SHA1_* */
-  if(!SHA1_Init(&aux_sha)) {
+	if((mdctx = EVP_MD_CTX_new()) == NULL) {
+		LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_prove_equality", __LINE__, EDQUOT,
+ 		      "EVP_MD_CTX_new", LOGERROR);
+    GOTOENDRC(IERROR, kty04_prove_equality);
+	}
+#ifdef SHA3
+  if(EVP_DigestInit_ex(mdctx, EVP_sha3_512(), NULL) != 1) {
+#else
+  if(EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL) != 1) {
+#endif
     LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_prove_equality", __LINE__, EDQUOT,
-		      "SHA1_Init", LOGERROR);
+		      "EVP_DigestInit_ex", LOGERROR);
     GOTOENDRC(IERROR, kty04_prove_equality);
   }
-   
+
   /* We get r in the same sphere as x' */
-  if(sphere_get_random(gkey->inner_lambda, r) == IERROR) 
+  if(sphere_get_random(gkey->inner_lambda, r) == IERROR)
     GOTOENDRC(IERROR, kty04_prove_equality);
-   
+
   /* To create the proof, we make use of the T6 and T7 objects (A[5] and
      A[6], if I remember correctly). The knowledge of the discrete logarithm
      of T6 to the base T7 is used in normal signature claims. In the same way,
@@ -89,12 +106,12 @@ int kty04_prove_equality(groupsig_proof_t *proof, groupsig_key_t *memkey,
      of T6 to the base T7 is the same to that of T6' to the base T7'. */
 
   /* In a kty04_signature_t, T6 is stored in A[12] and T7 in A[4] */
-  
+
   /* (1) Raise the T7 field of each received signature to r, and put it into
      the hash. */
-  if(!(t7r = bigz_init())) 
+  if(!(t7r = bigz_init()))
     GOTOENDRC(IERROR, kty04_prove_equality);
-  
+
   for(i=0; i<n_sigs; i++) {
 
     /* Get the next signature in the line... */
@@ -105,49 +122,49 @@ int kty04_prove_equality(groupsig_proof_t *proof, groupsig_key_t *memkey,
     }
 
     kty04_sig = (kty04_signature_t *) sig->sig;
-     
+
     if(bigz_powm(t7r, kty04_sig->A[4], r, gkey->n) == IERROR)
       GOTOENDRC(IERROR, kty04_prove_equality);
-         
+
     /* Put the i-th element of the array */
-    if(!(aux_t7r = bigz_get_str(10, t7r))) GOTOENDRC(IERROR, kty04_prove_equality);
-    if(!SHA1_Update(&aux_sha, aux_t7r, strlen(aux_t7r))) {
+    if(!(aux_t7r = bigz_get_str10(t7r))) GOTOENDRC(IERROR, kty04_prove_equality);
+		if(EVP_DigestUpdate(mdctx, aux_t7r, strlen(aux_t7r)) != 1) {
       LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_prove_equality", __LINE__, EDQUOT,
-			"SHA1_Update", LOGERROR);
+			"EVP_DigestUpdate", LOGERROR);
       GOTOENDRC(IERROR, kty04_prove_equality);
-    }     
+    }
     free(aux_t7r); aux_t7r = NULL;
 
     /* Put the also the base (the T7's) into the hash */
-    if(!(aux_t7 = bigz_get_str(10, kty04_sig->A[4]))) GOTOENDRC(IERROR, kty04_prove_equality);
-    if(!SHA1_Update(&aux_sha, aux_t7, strlen(aux_t7))) {
+    if(!(aux_t7 = bigz_get_str10(kty04_sig->A[4]))) GOTOENDRC(IERROR, kty04_prove_equality);
+		if(EVP_DigestUpdate(mdctx, aux_t7, strlen(aux_t7)) != 1) {
       LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_prove_equality", __LINE__, EDQUOT,
-			"SHA1_Update", LOGERROR);
+			"EVP_DigestUpdate", LOGERROR);
       GOTOENDRC(IERROR, kty04_prove_equality);
     }
     free(aux_t7); aux_t7 = NULL;
-    
+
   }
 
   /* And finally, put the modulus into the hash */
-  if(!(aux_n = bigz_get_str(10, gkey->n))) GOTOENDRC(IERROR, kty04_prove_equality);
-  if(!SHA1_Update(&aux_sha, aux_n, strlen(aux_n))) {
+  if(!(aux_n = bigz_get_str10(gkey->n))) GOTOENDRC(IERROR, kty04_prove_equality);
+	if(EVP_DigestUpdate(mdctx, aux_n, strlen(aux_n)) != 1) {
     LOG_ERRORCODE_MSG(&logger, __FILE__, "kty04_prove_equality", __LINE__, EDQUOT,
-		      "SHA1_Update", LOGERROR);
+		      "EVP_DigestUpdate", LOGERROR);
     GOTOENDRC(IERROR, kty04_prove_equality);
   }
-  free(aux_n); aux_n = NULL;  
-    
+  free(aux_n); aux_n = NULL;
+
   /* (2) Calculate c = hash(t7r[0] || t7[0] || ... || t7r[n-1] || t7[n-1] || mod ) */
-  memset(aux_sc, 0, SHA_DIGEST_LENGTH+1);
-  if(!SHA1_Final(aux_sc, &aux_sha)) {
+  memset(aux_sc, 0, HASH_DIGEST_LENGTH+1);
+	if(EVP_DigestFinal_ex(mdctx, aux_sc, NULL) != 1) {
     LOG_ERRORCODE_MSG(&logger, __FILE__, "proof_equality", __LINE__, EDQUOT,
-		      "SHA1_Final", LOGERROR);
+		      "EVP_DigestFinal_ex", LOGERROR);
     GOTOENDRC(IERROR, kty04_prove_equality);
   }
 
   /* Now, we have to get c as a bigz_t */
-  if(!(kty04_proof->c = bigz_import(aux_sc,SHA_DIGEST_LENGTH))) 
+  if(!(kty04_proof->c = bigz_import(aux_sc, HASH_DIGEST_LENGTH)))
     GOTOENDRC(IERROR, kty04_prove_equality);
 
   /* (3) To end, get s = r - c*x */
@@ -162,12 +179,12 @@ int kty04_prove_equality(groupsig_proof_t *proof, groupsig_key_t *memkey,
 
   /* Free resources and exit */
  kty04_prove_equality_end:
-   
+  if (mdctx) EVP_MD_CTX_free(mdctx);
   if(r) bigz_free(r);
   if(t7r) bigz_free(t7r);
-   
+
   return rc;
-   
+
 }
 
 /* prove_equality.c ends here */

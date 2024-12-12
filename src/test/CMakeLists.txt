@@ -26,6 +26,19 @@ target_link_libraries(BBS04Test
   pthread)
 add_test(NAME BBS04Test COMMAND BBS04Test)
 
+# Tests for CPY06
+#add_executable(CPY06Test test_cpy06.cpp)
+#target_link_libraries(CPY06Test
+#  PUBLIC
+#  groupsig
+#  big
+#  sys
+#  logger
+#  gtest_main
+#  gtest
+#  pthread)
+#add_test(NAME CPY06Test COMMAND CPY06Test)
+
 # Tests for PS16
 add_executable(PS16Test test_ps16.cpp)
 target_link_libraries(PS16Test
@@ -78,18 +91,6 @@ target_link_libraries(DL21SEQTest
   pthread)
 add_test(NAME DL21SEQTest COMMAND DL21SEQTest)
 
-# Tests for Bigz
-add_executable(BigzTest test_bigz.cpp)
-target_link_libraries(BigzTest
-  PUBLIC
-  big
-  sys
-  logger
-  gtest_main
-  gtest
-  pthread)
-add_test(NAME BigzTest COMMAND BigzTest)
-
 # Tests for PBC
 add_executable(PBCTest test_pbc.cpp)
 target_link_libraries(PBCTest
@@ -114,3 +115,30 @@ target_link_libraries(HashTest
   gtest
   pthread)
 add_test(NAME HashTest COMMAND HashTest)
+
+# Tests for KTY04
+add_executable(KTY04Test test_kty04.cpp)
+target_link_libraries(KTY04Test
+  PUBLIC
+  groupsig
+  big
+  sys
+  logger
+  gtest_main
+  gtest
+  pthread)
+add_test(NAME KTY04Test COMMAND KTY04Test)
+
+# Tests for Bigz
+add_executable(BigzTest test_bigz.cpp)
+target_link_libraries(BigzTest
+  PUBLIC
+  big
+  sys
+  logger
+  gtest_main
+  gtest
+  pthread)
+add_test(NAME BigzTest COMMAND BigzTest)
+
+add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --verbose)

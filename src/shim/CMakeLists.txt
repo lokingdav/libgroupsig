@@ -14,7 +14,6 @@ target_include_directories (pbcext
 target_link_libraries (pbcext
   ${MCL384_256_LIBRARY}
   ${MCL_LIBRARY})
-
 # libhash
 add_library (hash hash.c)
 target_include_directories (hash

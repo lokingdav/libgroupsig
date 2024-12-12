@@ -1,4 +1,4 @@
-/* 
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -37,7 +37,7 @@ extern "C" {
  * @var GROUPSIG_BLINDSIG_HANDLES
  * @brief List of supported set of handles for managing blinded group signatures.
  */
-static const groupsig_blindsig_handle_t *GROUPSIG_BLINDSIG_HANDLES[GROUPSIG_BLINDSIG_HANDLES_N] = { 
+static const groupsig_blindsig_handle_t *GROUPSIG_BLINDSIG_HANDLES[GROUPSIG_BLINDSIG_HANDLES_N] = {
   &gl19_blindsig_handle,
 };
 

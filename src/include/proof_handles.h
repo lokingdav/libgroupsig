@@ -1,4 +1,4 @@
-/* 
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -22,8 +22,8 @@
 
 #include <stdlib.h>
 #include "proof.h"
-/* #include "groupsig/kty04/proof.h" */
-/* #include "groupsig/cpy06/proof.h" */
+#include "groupsig/kty04/proof.h"
+#include "groupsig/cpy06/proof.h"
 #include "groupsig/ps16/proof.h"
 #include "groupsig/klap20/proof.h"
 #include "groupsig/dl21/proof.h"
@@ -37,15 +37,15 @@ extern "C" {
  * @def GROUPSIG_PROOF_HANDLES_N
  * @brief Number of supported proof bundles.
  */
-#define GROUPSIG_PROOF_HANDLES_N 4
+#define GROUPSIG_PROOF_HANDLES_N 6
 
 /**
  * @var GROUPSIG_PROOF_HANDLES
  * @brief List of supported bundles for managing proofs.
  */
 static const groupsig_proof_handle_t *GROUPSIG_PROOF_HANDLES[GROUPSIG_PROOF_HANDLES_N] = {
-    //&kty04_proof_handle,
-    //&cpy06_proof_handle,
+  &kty04_proof_handle,
+  &cpy06_proof_handle,
   &ps16_proof_handle,
   &klap20_proof_handle,
   &dl21_proof_handle,

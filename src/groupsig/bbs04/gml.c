@@ -1,4 +1,4 @@
-/* 
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -77,7 +77,7 @@ int bbs04_gml_insert(gml_t *gml, gml_entry_t *entry) {
     return IERROR;
   }
 
-  if(!(gml->entries = (gml_entry_t **) 
+  if(!(gml->entries = (gml_entry_t **)
        realloc(gml->entries, sizeof(gml_entry_t *)*(gml->n+1)))) {
     LOG_ERRORCODE(&logger, __FILE__, "bbs04_gml_insert", __LINE__, errno,
 		  LOGERROR);
@@ -107,7 +107,7 @@ int bbs04_gml_remove(gml_t *gml, uint64_t index) {
   /* Just set it to NULL */
   /** @todo This will generate a lot of unused memory! Use some other ADT */
   gml->entries[index] = NULL;
-  
+
   /* Decrement the number of entries */
   gml->n--;
 
@@ -129,16 +129,16 @@ gml_entry_t* bbs04_gml_get(gml_t *gml, uint64_t index) {
   }
 
   return gml->entries[index];
-  
+
 }
 
 int bbs04_gml_export(byte_t **bytes, uint32_t *size, gml_t *gml) {
 
   byte_t *bentry, *_bytes;
   uint64_t i;
-  int rc;  
+  int rc;
   uint32_t total_size, entry_size;
-  
+
   if (!bytes || !size || !gml || gml->scheme != GROUPSIG_BBS04_CODE) {
     LOG_EINVAL(&logger, __FILE__, "bbs04_gml_export", __LINE__, LOGERROR);
     return IERROR;
@@ -181,7 +181,7 @@ int bbs04_gml_export(byte_t **bytes, uint32_t *size, gml_t *gml) {
   }
 
   if (bentry) { mem_free(bentry); bentry = NULL; }
-  
+
   return rc;
 
 }
@@ -191,8 +191,8 @@ gml_t* bbs04_gml_import(byte_t *bytes, uint32_t size) {
   gml_t *gml;
   uint64_t i;
   uint32_t read;
-  int entry_size, rc;
-  
+  int entry_size, rc, _entry_size;
+
   if(!bytes || !size) {
     LOG_EINVAL(&logger, __FILE__, "bbs04_gml_import", __LINE__, LOGERROR);
     return NULL;
@@ -201,12 +201,14 @@ gml_t* bbs04_gml_import(byte_t *bytes, uint32_t size) {
   read = 0;
   gml = NULL;
   rc = IOK;
-  
+
   if (!(gml = bbs04_gml_init())) GOTOENDRC(IERROR, bbs04_gml_import);
 
   /* Read the nubmer of entries to process */
   memcpy(&gml->n, bytes, sizeof(uint64_t));
   read += sizeof(uint64_t);
+
+  _entry_size = (size - read) / gml->n;
 
   if (!(gml->entries = mem_malloc(sizeof(gml_entry_t *)*gml->n)))
     GOTOENDRC(IERROR, bbs04_gml_import);
@@ -214,25 +216,25 @@ gml_t* bbs04_gml_import(byte_t *bytes, uint32_t size) {
   /* Import the entries one by one */
   for (i=0; i<gml->n; i++) {
 
-    if (!(gml->entries[i] = bbs04_gml_entry_import(&bytes[read], size-read)))
+    if (!(gml->entries[i] = bbs04_gml_entry_import(&bytes[read], _entry_size)))
       GOTOENDRC(IERROR, bbs04_gml_import);
-    
+
     if ((entry_size = bbs04_gml_entry_get_size(gml->entries[i])) == -1)
       GOTOENDRC(IERROR, bbs04_gml_import);
 
     read += entry_size;
-    
+
   }
 
  bbs04_gml_import_end:
-  
+
   if (rc == IERROR) {
     bbs04_gml_free(gml);
     gml = NULL;
   }
-  
+
   return gml;
- 
+
 }
 
 gml_entry_t* bbs04_gml_entry_init() {
@@ -248,7 +250,7 @@ gml_entry_t* bbs04_gml_entry_init() {
   entry->scheme = GROUPSIG_BBS04_CODE;
   entry->id = 0;
   entry->data = NULL;
-  
+
   return entry;
 
 }
@@ -257,7 +259,7 @@ gml_entry_t* bbs04_gml_entry_init() {
 int bbs04_gml_entry_free(gml_entry_t *entry) {
 
   int rc;
-  
+
   if(!entry) {
     LOG_EINVAL_MSG(&logger, __FILE__, "bbs04_gml_entry_free", __LINE__,
 		   "Nothing to free.", LOGWARN);
@@ -270,9 +272,9 @@ int bbs04_gml_entry_free(gml_entry_t *entry) {
     rc = pbcext_element_G1_free(entry->data);
     entry->data = NULL;
   }
-  
-  mem_free(entry); 
-  
+
+  mem_free(entry);
+
   return rc;
 
 }
@@ -280,7 +282,7 @@ int bbs04_gml_entry_free(gml_entry_t *entry) {
 int bbs04_gml_entry_get_size(gml_entry_t *entry) {
 
   uint64_t sG1;
-  
+
   if (!entry) {
     LOG_EINVAL(&logger, __FILE__, "bbs04_gml_entry_get_size", __LINE__, LOGERROR);
     return -1;
@@ -289,11 +291,11 @@ int bbs04_gml_entry_get_size(gml_entry_t *entry) {
   if (pbcext_element_G1_byte_size(&sG1) == -1)
     return -1;
 
-  if (sG1 > INT_MAX) return -1;
+  if (sG1 + sizeof(int) + sizeof(uint64_t) > INT_MAX) return -1;
 
-  return (int) sG1 + sizeof(int);
-  
-  
+  return (int) sG1 + sizeof(int) + sizeof(uint64_t);
+
+
 }
 
 int bbs04_gml_entry_export(byte_t **bytes,
@@ -301,27 +303,37 @@ int bbs04_gml_entry_export(byte_t **bytes,
 			   gml_entry_t *entry) {
 
   byte_t *_bytes, *__bytes;
-  uint64_t _size, len;
-  
+  uint64_t _size, len, offset;
+
   if (!bytes || !size || !entry) {
     LOG_EINVAL(&logger, __FILE__, "bbs04_gml_entry_export", __LINE__, LOGERROR);
-    return IERROR;    
+    return IERROR;
   }
 
   /* Calculate size */
   if ((_size = bbs04_gml_entry_get_size(entry)) == -1) return IERROR;
-  _size += sizeof(int) + sizeof(uint64_t);
-  
+  /* _size += sizeof(int) + sizeof(uint64_t); */
+
   if (!(_bytes = mem_malloc(sizeof(byte_t)*_size))) return IERROR;
 
   /* First, dump the identity */
   memcpy(_bytes, &entry->id, sizeof(uint64_t));
+  offset = sizeof(uint64_t);
 
   /* Next, dump the data, which for BBS04 is just the G1 element */
-  __bytes = &_bytes[sizeof(uint64_t)];
+  __bytes = &_bytes[offset];
   if (pbcext_dump_element_G1_bytes(&__bytes,
 				   &len,
 				   entry->data) == IERROR) {
+    mem_free(_bytes); _bytes = NULL;
+    return IERROR;
+  }
+  offset += len;
+
+  /* Sanity check */
+  if (offset != _size) {
+    LOG_ERRORCODE_MSG(&logger, __FILE__, "bbs04_gml_entry_export", __LINE__,
+		      EDQUOT, "Unexpected size.", LOGERROR);
     mem_free(_bytes); _bytes = NULL;
     return IERROR;
   }
@@ -337,44 +349,55 @@ int bbs04_gml_entry_export(byte_t **bytes,
   *size = _size;
 
   return IOK;
-  
+
 }
 
 gml_entry_t* bbs04_gml_entry_import(byte_t *bytes, uint32_t size) {
 
   gml_entry_t *entry;
-  uint64_t len;
+  uint64_t len, offset;
 
   if (!bytes || !size) {
     LOG_EINVAL(&logger, __FILE__, "bbs04_gml_entry_import", __LINE__, LOGERROR);
-    return NULL;    
+    return NULL;
   }
 
   if (!(entry = bbs04_gml_entry_init())) return NULL;
 
   /* First, read the identity */
   memcpy(&entry->id, bytes, sizeof(uint64_t));
+  offset = sizeof(uint64_t);
 
   /* Next, read the data (just a G1 element) */
   if(!(entry->data = pbcext_element_G1_init())) {
     bbs04_gml_entry_free(entry); entry = NULL;
     return NULL;
   }
-  
+
   if (pbcext_get_element_G1_bytes(entry->data,
 				  &len,
-				  &bytes[sizeof(uint64_t)]) == IERROR) {
+				  &bytes[offset]) == IERROR) {
     bbs04_gml_entry_free(entry); entry = NULL;
-    return NULL;    
+    return NULL;
   }
 
   if (!len) {
     bbs04_gml_entry_free(entry); entry = NULL;
-    return NULL;    
+    return NULL;
+  }
+
+  offset += len;
+
+    /* Sanity check */
+  if (offset != size) {
+    LOG_ERRORCODE_MSG(&logger, __FILE__, "bbs04_gml_entry_import", __LINE__,
+		      EDQUOT, "Unexpected size.", LOGERROR);
+    bbs04_gml_entry_free(entry); entry = NULL;
+    return NULL;
   }
 
   return entry;
-  
+
 }
 
 char* bbs04_gml_entry_to_string(gml_entry_t *entry) {
@@ -388,7 +411,7 @@ char* bbs04_gml_entry_to_string(gml_entry_t *entry) {
     return NULL;
   }
 
-  /* A string representation of a GML entry will be: 
+  /* A string representation of a GML entry will be:
      <id>\t<trapdoor> */
 
   /* Get the string representations of the entry's fields */
@@ -418,7 +441,7 @@ char* bbs04_gml_entry_to_string(gml_entry_t *entry) {
   mem_free(sdata); sdata = NULL;
 
   return sentry;
- 
+
 }
 
 /* gml.c ends here */

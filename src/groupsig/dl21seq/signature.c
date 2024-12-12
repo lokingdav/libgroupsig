@@ -1,4 +1,4 @@
-/* 
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -43,12 +43,12 @@ groupsig_signature_t* dl21seq_signature_init() {
 
   /* Initialize the signature contents */
   if(!(sig = (groupsig_signature_t *) mem_malloc(sizeof(groupsig_signature_t)))) {
-    LOG_ERRORCODE(&logger, __FILE__, "dl21seq_signature_init", __LINE__, errno, 
+    LOG_ERRORCODE(&logger, __FILE__, "dl21seq_signature_init", __LINE__, errno,
 		  LOGERROR);
   }
 
   if(!(dl21seq_sig = (dl21seq_signature_t *) mem_malloc(sizeof(dl21seq_signature_t)))) {
-    LOG_ERRORCODE(&logger, __FILE__, "dl21seq_signature_init", __LINE__, errno, 
+    LOG_ERRORCODE(&logger, __FILE__, "dl21seq_signature_init", __LINE__, errno,
 		  LOGERROR);
     return NULL;
   }
@@ -66,7 +66,7 @@ int dl21seq_signature_free(groupsig_signature_t *sig) {
 
   if(!sig || sig->scheme != GROUPSIG_DL21SEQ_CODE) {
     LOG_EINVAL_MSG(&logger, __FILE__, "dl21seq_signature_free", __LINE__,
-		   "Nothing to free.", LOGWARN);    
+		   "Nothing to free.", LOGWARN);
     return IOK;
   }
 
@@ -96,7 +96,7 @@ int dl21seq_signature_free(groupsig_signature_t *sig) {
     mem_free(dl21seq_sig);
     dl21seq_sig = NULL;
   }
-  
+
   mem_free(sig);
 
   return IOK;
@@ -123,12 +123,12 @@ int dl21seq_signature_copy(groupsig_signature_t *dst, groupsig_signature_t *src)
     GOTOENDRC(IERROR, dl21seq_signature_copy);
   if(pbcext_element_G1_set(dl21seq_dst->AA, dl21seq_src->AA) == IERROR)
     GOTOENDRC(IERROR, dl21seq_signature_copy);
-  
+
   if(!(dl21seq_dst->A_ = pbcext_element_G1_init()))
     GOTOENDRC(IERROR, dl21seq_signature_copy);
   if(pbcext_element_G1_set(dl21seq_dst->A_, dl21seq_src->A_) == IERROR)
     GOTOENDRC(IERROR, dl21seq_signature_copy);
-  
+
   if(!(dl21seq_dst->d = pbcext_element_G1_init()))
     GOTOENDRC(IERROR, dl21seq_signature_copy);
   if(pbcext_element_G1_set(dl21seq_dst->d, dl21seq_src->d) == IERROR)
@@ -143,7 +143,7 @@ int dl21seq_signature_copy(groupsig_signature_t *dst, groupsig_signature_t *src)
     GOTOENDRC(IERROR, dl21seq_signature_copy);
   if(pbcext_element_G1_set(dl21seq_dst->nym, dl21seq_src->nym) == IERROR)
     GOTOENDRC(IERROR, dl21seq_signature_copy);
-  
+
  dl21seq_signature_copy_end:
 
   if (rc == IERROR) {
@@ -162,21 +162,21 @@ int dl21seq_signature_copy(groupsig_signature_t *dst, groupsig_signature_t *src)
     if(dl21seq_dst->pi) {
       spk_rep_free(dl21seq_dst->pi);
       dl21seq_dst->pi = NULL;
-    }    
+    }
     if(dl21seq_dst->nym) {
       pbcext_element_G1_free(dl21seq_dst->nym);
       dl21seq_dst->nym = NULL;
     }
-    
+
   }
-  
+
   return rc;
 
 }
 
 int dl21seq_signature_get_size(groupsig_signature_t *sig) {
 
-  uint64_t sAA, sA_, sd, sc, ss, snym;
+  uint64_t G1, Fr;
   dl21seq_signature_t *dl21seq_sig;
   int size, i;
 
@@ -185,32 +185,26 @@ int dl21seq_signature_get_size(groupsig_signature_t *sig) {
 	       LOGERROR);
     return -1;
   }
-  
+
   dl21seq_sig = sig->sig;
+  // To export the signature, we need to calculate the sizes of dl21seq_signature_t:
+  // AA-sz (int), AA (G1), A_-sz (int), A_ (G1), d-sz (int), d (G1)
+  // nym-sz (int), nym (G1), pi (spk_rep), seq (dl21seq_seqinfo)
+  // spk_rep: c-sz (int), c (Fr), n*s-sz (int), n*s (Fr)
+  // dl21seq_seqinfo: 3*seq-sz (uint64), 3*seq
+  // total:
+  // 1 (schema) + 4*int + 4*G1 (AA, A_, d, nym) +
+  // int + Fr (c) + n*int + n*Fr (s) + 3*uint64 + 3*seq
+  if (pbcext_element_G1_byte_size(&G1) == IERROR) return -1;
+  if (pbcext_element_Fr_byte_size(&Fr) == IERROR) return -1;
 
-  if (pbcext_element_G1_byte_size(&sAA) == IERROR) return -1;
-  if (pbcext_element_G1_byte_size(&sA_) == IERROR) return -1;
-  if (pbcext_element_G1_byte_size(&sd) == IERROR) return -1;
-  if (pbcext_element_Fr_byte_size(&sc) == IERROR) return -1;
-  if (pbcext_element_G1_byte_size(&snym) == IERROR) return -1;
+  size = 1 + 4*sizeof(int) + 4*G1 + sizeof(int) + Fr + dl21seq_sig->pi->ns*sizeof(int)
+    + dl21seq_sig->pi->ns*Fr + 3*sizeof(uint64_t) + dl21seq_sig->seq->len1
+    + dl21seq_sig->seq->len2 + dl21seq_sig->seq->len3;
 
-  if ((int) sAA + sA_ + sd + sc + snym + dl21seq_sig->seq->len1 +
-      dl21seq_sig->seq->len2 + dl21seq_sig->seq->len3 + sizeof(uint64_t)*3 +
-      sizeof(int)*5+1 > INT_MAX) return -1;
-  
-  size = (int) sAA + sA_ + sd + sc + snym + dl21seq_sig->seq->len1 +
-    dl21seq_sig->seq->len2 + dl21seq_sig->seq->len3 + sizeof(uint64_t)*3 +
-    sizeof(int)*5+1;
-
-  for (i=0; i<dl21seq_sig->pi->ns; i++) {
-    if (pbcext_element_Fr_byte_size(&ss) == IERROR)
-      return -1;
-    if (size + (int) ss + sizeof(int) > INT_MAX) return -1;
-    size += (int) ss + sizeof(int);
-  }
+  if (size > INT_MAX) return -1;
 
   return size;
-
 }
 
 int dl21seq_signature_export(byte_t **bytes,
@@ -221,8 +215,7 @@ int dl21seq_signature_export(byte_t **bytes,
   byte_t *_bytes, *__bytes;
   uint64_t len;
   int rc, ctr, _size;
-  uint16_t i;
-  
+
   if(!sig || sig->scheme != GROUPSIG_DL21SEQ_CODE) {
     LOG_EINVAL(&logger, __FILE__, "dl21seq_signature_export", __LINE__, LOGERROR);
     return IERROR;
@@ -238,8 +231,8 @@ int dl21seq_signature_export(byte_t **bytes,
 
   if (!(_bytes = mem_malloc(sizeof(byte_t)*_size))) {
     return IERROR;
-  }  
-  
+  }
+
    /* Dump GROUPSIG_DL21SEQ_CODE */
   _bytes[ctr++] = GROUPSIG_DL21SEQ_CODE;
 
@@ -253,27 +246,28 @@ int dl21seq_signature_export(byte_t **bytes,
   __bytes = &_bytes[ctr];
   if(pbcext_dump_element_G1_bytes(&__bytes, &len, dl21seq_sig->A_) == IERROR)
     GOTOENDRC(IERROR, dl21seq_signature_export);
-  ctr += len;  
+  ctr += len;
 
   /* Dump d */
   __bytes = &_bytes[ctr];
   if(pbcext_dump_element_G1_bytes(&__bytes, &len, dl21seq_sig->d) == IERROR)
     GOTOENDRC(IERROR, dl21seq_signature_export);
   ctr += len;
-  
-  /* Dump spk */
+
+  /* Dump spk: c */
   __bytes = &_bytes[ctr];
   if(pbcext_dump_element_Fr_bytes(&__bytes, &len, dl21seq_sig->pi->c) == IERROR)
     GOTOENDRC(IERROR, dl21seq_signature_export);
-  ctr += len;  
+  ctr += len;
 
-  for(i=0; i<dl21seq_sig->pi->ns; i++) {
+    /* Dump spk: s */
+  for(int i = 0; i < dl21seq_sig->pi->ns; i++) {
     __bytes = &_bytes[ctr];
     if(pbcext_dump_element_Fr_bytes(&__bytes, &len, dl21seq_sig->pi->s[i]) == IERROR)
       GOTOENDRC(IERROR, dl21seq_signature_export);
-    ctr += len;      
+    ctr += len;
   }
-  
+
   /* Dump nym */
   __bytes = &_bytes[ctr];
   if(pbcext_dump_element_G1_bytes(&__bytes, &len, dl21seq_sig->nym) == IERROR)
@@ -297,12 +291,12 @@ int dl21seq_signature_export(byte_t **bytes,
   ctr += dl21seq_sig->seq->len2;
 
   /* Dump len3 */
-  memcpy(&_bytes[ctr], &dl21seq_sig->seq->len2, sizeof(uint64_t));
+  memcpy(&_bytes[ctr], &dl21seq_sig->seq->len3, sizeof(uint64_t));
   ctr += sizeof(uint64_t);
 
   /* Get seq3 */
-  memcpy(&_bytes[ctr], &dl21seq_sig->seq->seq2, dl21seq_sig->seq->len2);
-  ctr += dl21seq_sig->seq->len2;  
+  memcpy(&_bytes[ctr], &dl21seq_sig->seq->seq3, dl21seq_sig->seq->len3);
+  ctr += dl21seq_sig->seq->len3;
 
   /* Prepare the return */
   if(!*bytes) {
@@ -314,7 +308,7 @@ int dl21seq_signature_export(byte_t **bytes,
 
   /* Sanity check */
   if (ctr != _size) {
-    LOG_ERRORCODE_MSG(&logger, __FILE__, "dl21seq_signature_export", __LINE__, 
+    LOG_ERRORCODE_MSG(&logger, __FILE__, "dl21seq_signature_export", __LINE__,
 		      EDQUOT, "Unexpected key scheme.", LOGERROR);
     GOTOENDRC(IERROR, dl21seq_signature_export);
   }
@@ -322,9 +316,9 @@ int dl21seq_signature_export(byte_t **bytes,
   *size = ctr;
 
  dl21seq_signature_export_end:
-  
+
   if (rc == IERROR && _bytes) { mem_free(_bytes); _bytes = NULL; }
-  return rc;   
+  return rc;
 
 }
 
@@ -350,20 +344,20 @@ groupsig_signature_t* dl21seq_signature_import(byte_t *source, uint32_t size) {
   }
 
   dl21seq_sig = sig->sig;
-  
+
   /* First byte: scheme */
   scheme = source[ctr++];
   if(scheme != sig->scheme) {
-    LOG_ERRORCODE_MSG(&logger, __FILE__, "dl21seq_signature_import", __LINE__, 
+    LOG_ERRORCODE_MSG(&logger, __FILE__, "dl21seq_signature_import", __LINE__,
 		      EDQUOT, "Unexpected signature scheme.", LOGERROR);
     GOTOENDRC(IERROR, dl21seq_signature_import);
-  }  
+  }
 
   /* Get AA */
   if(!(dl21seq_sig->AA = pbcext_element_G1_init()))
     GOTOENDRC(IERROR, dl21seq_signature_import);
   if(pbcext_get_element_G1_bytes(dl21seq_sig->AA, &len, &source[ctr]) == IERROR)
-    GOTOENDRC(IERROR, dl21seq_signature_import);  
+    GOTOENDRC(IERROR, dl21seq_signature_import);
   if (!len) {
     ctr += sizeof(int);  // @TODO: this is an artifact of pbcext_get_element_XX_bytes
   } else {
@@ -374,32 +368,33 @@ groupsig_signature_t* dl21seq_signature_import(byte_t *source, uint32_t size) {
   if(!(dl21seq_sig->A_ = pbcext_element_G1_init()))
     GOTOENDRC(IERROR, dl21seq_signature_import);
   if(pbcext_get_element_G1_bytes(dl21seq_sig->A_, &len, &source[ctr]) == IERROR)
-    GOTOENDRC(IERROR, dl21seq_signature_import);  
-  if (!len) {
-    ctr += sizeof(int);  // @TODO: this is an artifact of pbcext_get_element_XX_bytes
-  } else {
-    ctr += len;
-  }  
-
-  /* Get d */
-  if(!(dl21seq_sig->d = pbcext_element_G1_init()))
     GOTOENDRC(IERROR, dl21seq_signature_import);
-  if(pbcext_get_element_G1_bytes(dl21seq_sig->d, &len, &source[ctr]) == IERROR)
-    GOTOENDRC(IERROR, dl21seq_signature_import);  
   if (!len) {
     ctr += sizeof(int);  // @TODO: this is an artifact of pbcext_get_element_XX_bytes
   } else {
     ctr += len;
   }
 
-  /* Get spk */
+  /* Get d */
+  if(!(dl21seq_sig->d = pbcext_element_G1_init()))
+    GOTOENDRC(IERROR, dl21seq_signature_import);
+  if(pbcext_get_element_G1_bytes(dl21seq_sig->d, &len, &source[ctr]) == IERROR)
+    GOTOENDRC(IERROR, dl21seq_signature_import);
+  if (!len) {
+    ctr += sizeof(int);  // @TODO: this is an artifact of pbcext_get_element_XX_bytes
+  } else {
+    ctr += len;
+  }
+
+  /* Get spk: c */
   if(!(dl21seq_sig->pi = spk_rep_init(6)))
     GOTOENDRC(IERROR, dl21seq_signature_import);
 
+  /* Get spk: s */
   if(!(dl21seq_sig->pi->c = pbcext_element_Fr_init()))
     GOTOENDRC(IERROR, dl21seq_signature_import);
   if(pbcext_get_element_Fr_bytes(dl21seq_sig->pi->c, &len, &source[ctr]) == IERROR)
-    GOTOENDRC(IERROR, dl21seq_signature_import);  
+    GOTOENDRC(IERROR, dl21seq_signature_import);
   if (!len) {
     ctr += sizeof(int);  // @TODO: this is an artifact of pbcext_get_element_XX_bytes
   } else {
@@ -410,19 +405,19 @@ groupsig_signature_t* dl21seq_signature_import(byte_t *source, uint32_t size) {
     if(!(dl21seq_sig->pi->s[i] = pbcext_element_Fr_init()))
       GOTOENDRC(IERROR, dl21seq_signature_import);
     if(pbcext_get_element_Fr_bytes(dl21seq_sig->pi->s[i], &len, &source[ctr]) == IERROR)
-      GOTOENDRC(IERROR, dl21seq_signature_import);  
+      GOTOENDRC(IERROR, dl21seq_signature_import);
     if (!len) {
       ctr += sizeof(int);  // @TODO: this is an artifact of pbcext_get_element_XX_bytes
     } else {
       ctr += len;
     }
   }
-  
+
   /* Get nym */
   if(!(dl21seq_sig->nym = pbcext_element_G1_init()))
     GOTOENDRC(IERROR, dl21seq_signature_import);
   if(pbcext_get_element_G1_bytes(dl21seq_sig->nym, &len, &source[ctr]) == IERROR)
-    GOTOENDRC(IERROR, dl21seq_signature_import);  
+    GOTOENDRC(IERROR, dl21seq_signature_import);
   if (!len) {
     ctr += sizeof(int);  // @TODO: this is an artifact of pbcext_get_element_XX_bytes
   } else {
@@ -431,7 +426,7 @@ groupsig_signature_t* dl21seq_signature_import(byte_t *source, uint32_t size) {
 
   dl21seq_sig->seq = (dl21seq_seqinfo_t *) mem_malloc(sizeof(dl21seq_seqinfo_t));
   if (!dl21seq_sig->seq) GOTOENDRC(IERROR, dl21seq_signature_import);
-  
+
   /* Get len1 */
   memcpy(&dl21seq_sig->seq->len1, &source[ctr], sizeof(uint64_t));
   ctr += sizeof(uint64_t);
@@ -439,7 +434,7 @@ groupsig_signature_t* dl21seq_signature_import(byte_t *source, uint32_t size) {
   /* Get seq1 */
   if (!(dl21seq_sig->seq->seq1 =
 	(byte_t *) mem_malloc(sizeof(byte_t)*dl21seq_sig->seq->len1)))
-    GOTOENDRC(IERROR, dl21seq_signature_import);  
+    GOTOENDRC(IERROR, dl21seq_signature_import);
   memcpy(dl21seq_sig->seq->seq1, &source[ctr], dl21seq_sig->seq->len1);
   ctr += dl21seq_sig->seq->len1;
 
@@ -450,7 +445,7 @@ groupsig_signature_t* dl21seq_signature_import(byte_t *source, uint32_t size) {
   /* Get seq2 */
   if (!(dl21seq_sig->seq->seq2 =
 	(byte_t *) mem_malloc(sizeof(byte_t)*dl21seq_sig->seq->len2)))
-    GOTOENDRC(IERROR, dl21seq_signature_import);  
+    GOTOENDRC(IERROR, dl21seq_signature_import);
   memcpy(dl21seq_sig->seq->seq2, &source[ctr], dl21seq_sig->seq->len2);
   ctr += dl21seq_sig->seq->len2;
 
@@ -461,7 +456,7 @@ groupsig_signature_t* dl21seq_signature_import(byte_t *source, uint32_t size) {
   /* Get seq3 */
   if (!(dl21seq_sig->seq->seq3 =
 	(byte_t *) mem_malloc(sizeof(byte_t)*dl21seq_sig->seq->len3)))
-    GOTOENDRC(IERROR, dl21seq_signature_import);  
+    GOTOENDRC(IERROR, dl21seq_signature_import);
   memcpy(dl21seq_sig->seq->seq3, &source[ctr], dl21seq_sig->seq->len3);
   ctr += dl21seq_sig->seq->len3;
 
@@ -469,7 +464,7 @@ groupsig_signature_t* dl21seq_signature_import(byte_t *source, uint32_t size) {
 
   if(rc == IERROR && sig) { dl21seq_signature_free(sig); sig = NULL; }
   if(rc == IOK) return sig;
-  return NULL;  
+  return NULL;
 
 }
 
@@ -478,7 +473,7 @@ char* dl21seq_signature_to_string(groupsig_signature_t *sig) {
   uint32_t size;
   byte_t *bytes;
   char *str;
-  
+
   if(!sig || sig->scheme != GROUPSIG_DL21SEQ_CODE) {
     LOG_EINVAL(&logger, __FILE__, "signature_to_string", __LINE__, LOGERROR);
     return NULL;

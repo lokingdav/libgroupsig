@@ -1,4 +1,4 @@
-/* 
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -33,7 +33,7 @@
 prf_key_t* prf_key_init() {
 
   prf_key_t *key;
-  
+
   if (!(key = (prf_key_t *) mem_malloc(sizeof(prf_key_t)))) {
     return NULL;
   }
@@ -45,13 +45,13 @@ prf_key_t* prf_key_init() {
   key->len = (uint8_t) HASH_BLAKE2_LENGTH;
 
   return key;
-  
+
 }
 
 prf_key_t* prf_key_init_random() {
 
   prf_key_t *key;
-  
+
   if (!(key = (prf_key_t *) mem_malloc(sizeof(prf_key_t)))) {
     return NULL;
   }
@@ -59,7 +59,7 @@ prf_key_t* prf_key_init_random() {
   if(!(key->bytes = (byte_t *) mem_malloc(sizeof(byte_t)*HASH_BLAKE2_LENGTH))) {
     return NULL;
   }
-  
+
   key->len = (uint8_t) HASH_BLAKE2_LENGTH;
 
   /* Set bytes to random */
@@ -67,9 +67,9 @@ prf_key_t* prf_key_init_random() {
     mem_free(key->bytes); key->bytes = NULL;
     mem_free(key); key = NULL;
   }
-  
+
   return key;
-  
+
 }
 
 int prf_key_free(prf_key_t *key) {
@@ -103,7 +103,7 @@ int prf_compute(byte_t **out, uint64_t *outlen, prf_key_t *key,
     return IERROR;
   }
 
-  /* Compute the HMAC */  
+  /* Compute the HMAC */
   if(!(hmac_ctx = HMAC_CTX_new())) {
     LOG_ERRORCODE_MSG(&logger, __FILE__, "prf_compute", __LINE__, EDQUOT,
 		      "OpenSSL: HMAC_CTX_new", LOGERROR);
@@ -113,7 +113,7 @@ int prf_compute(byte_t **out, uint64_t *outlen, prf_key_t *key,
   if(!(HMAC_Init_ex(hmac_ctx, key->bytes, key->len, md, NULL))) {
     LOG_ERRORCODE_MSG(&logger, __FILE__, "prf_compute", __LINE__, EDQUOT,
 		      "OpenSSL: HMAC_Init_ex", LOGERROR);
-    HMAC_CTX_free(hmac_ctx);	
+    HMAC_CTX_free(hmac_ctx);
     return IERROR;
   }
 
@@ -144,7 +144,7 @@ int prf_compute(byte_t **out, uint64_t *outlen, prf_key_t *key,
 
   *outlen = (uint64_t) _len;
   HMAC_CTX_free(hmac_ctx);
-  
+
   return IOK;
-  
+
 }
